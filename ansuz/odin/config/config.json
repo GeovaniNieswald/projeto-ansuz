@@ -1,0 +1,21 @@
+
+{
+	"max_disappear": 10,
+	"max_distance": 175,
+	"track_object": 4,
+	"confidence": 0.5,
+	"frame_width": 400,
+	"speed_estimation_zone": {"A": 120, "B": 160, "C": 200, "D": 240},
+	"distance": 16,
+	"speed_limit": 17,
+	"display": true,
+	"model_path": "odin/MobileNetSSD_deploy.caffemodel",
+	"prototxt_path": "odin/MobileNetSSD_deploy.prototxt",
+	"use_dropbox": false,
+	"dropbox_access_token": "YOUR_DROPBOX_APP_ACCESS_TOKEN",
+	"output_path": "odin/output",
+	"csv_name": "log.csv"
+}
+
+
+

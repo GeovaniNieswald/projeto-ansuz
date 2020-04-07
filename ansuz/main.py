@@ -4,10 +4,10 @@ from odin.odin import *
 if __name__ == '__main__':
     hugin = Hugin(50)
     odin = Odin(0)
-    
     while True:
         try:
-            odin.set_velocidade(int(input("Velocidade: ")))
+            #odin.set_velocidade(int(input("Velocidade: ")))
+            #print(odin.velocidade)
 
             if odin.velocidade > 0:
                 hugin.processa_velocidade(odin.velocidade)
