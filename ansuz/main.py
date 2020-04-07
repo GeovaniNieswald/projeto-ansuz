@@ -1,77 +1,67 @@
-from hugin.hugin import *
-from odin.odin import *
-
-if __name__ == '__main__':
-    hugin = Hugin(50)
-    odin = Odin(0)
-    while True:
-        try:
-            #odin.set_velocidade(int(input("Velocidade: ")))
-            #print(odin.velocidade)
-
-            if odin.velocidade > 0:
-                hugin.processa_velocidade(odin.velocidade)
-            else: 
-                break 
-        except ValueError:
-            print("Velocidade deve ser um numero inteiro.") 
-
-"""
-from threading import Thread
+import threading
+import tkinter as tk
 import time
+import queue
 from hugin.hugin import *
 from odin.odin import *
 
-hugin = Hugin(50)
-odin = Odin(0)
+class ThreadedClient():
 
-tempo_ultima_velocidade = 0
+    def __init__(self, master):
+        self.odin = Odin(0)
+        self.master = master
 
-rodar = True
+        self.tempo_ultima_velocidade = 0
 
-def thread1(threadname):
-    global hugin
-    global odin
-    global tempo_ultima_velocidade
-    global rodar
+        self.queue = queue.Queue()
 
-    while True:
-        if rodar == False:
-            break
+        self.hugin = Hugin(master, self.queue, 50)
 
-        if tempo_ultima_velocidade >= 10:
-            hugin.zera_painel()
-            tempo_ultima_velocidade = 0
-        else:
-            tempo_ultima_velocidade += 1
-            time.sleep(1)
+        self.running = 1
+        self.thread1 = threading.Thread(target=self.worker_thread1)
+        self.thread1.start()
 
-def thread2(threadname):
-    global hugin
-    global odin
-    global tempo_ultima_velocidade
-    global rodar
+        self.thread2 = threading.Thread(target=self.worker_thread2)
+        self.thread2.start()
 
-    while True:
-        if rodar == False:
-            break
+        self.periodic_call()
 
-        try:
-            odin.set_velocidade(int(input("Velocidade: ")))
+    def periodic_call(self):
+        self.hugin.process_incoming()
 
-            if odin.velocidade > 0:
-                hugin.processa_velocidade(odin.velocidade)
-                tempo_ultima_velocidade = 0
-            else: 
-                rodar = False
-        except ValueError:
-            print("Velocidade deve ser um numero inteiro.") 
+        if not self.running:
+            import sys
+            sys.exit(1)
 
-thread1 = Thread( target=thread1, args=("Thread-1", ) )
-thread2 = Thread( target=thread2, args=("Thread-2", ) )
+        self.master.after(200, self.periodic_call)
 
-thread1.start()
-thread2.start()
+    def worker_thread1(self):
+        while self.running:
+            try:
+                #self.odin.set_velocidade(int(input("Velocidade: ")))
 
-thread2.join()
-"""
+                time.sleep(2)
+
+                if self.odin.get_velocidade() > 0:
+                    self.queue.put(self.odin.velocidade)
+                    self.tempo_ultima_velocidade = 0
+                else: 
+                    self.end_application()
+            except ValueError:
+                print("Velocidade deve ser um numero inteiro.") 
+
+    def worker_thread2(self):
+        while self.running:
+            if self.tempo_ultima_velocidade >= 10:
+                self.queue.put(-99)
+                self.tempo_ultima_velocidade = 0
+            else:
+                self.tempo_ultima_velocidade += 1
+                time.sleep(1)
+
+    def end_application(self):
+        self.running = 0
+
+root = tk.Tk()
+client = ThreadedClient(root)
+root.mainloop()

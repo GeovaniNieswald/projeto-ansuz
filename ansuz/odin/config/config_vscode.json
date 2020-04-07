@@ -13,10 +13,10 @@
     "distance": 16,
     "speed_limit": 17,
     "display": true,
-    "model_path": "odin/MobileNetSSD_deploy.caffemodel",
-    "prototxt_path": "odin/MobileNetSSD_deploy.prototxt",
+    "model_path": "ansuz/odin/MobileNetSSD_deploy.caffemodel",
+    "prototxt_path": "ansuz/odin/MobileNetSSD_deploy.prototxt",
     "use_dropbox": false,
     "dropbox_access_token": "YOUR_DROPBOX_APP_ACCESS_TOKEN",
-    "output_path": "odin/output",
+    "output_path": "ansuz/odin/output",
     "csv_name": "log.csv"
 }

@@ -32,10 +32,13 @@ import cv2
 import os
 import json
 
+#VSCode
+#conf_path = "ansuz/odin/config/config_vscode.json"
+#data_path = "ansuz/odin/sample_data/cars.mp4"
 
-conf_path = "odin/config/config.json"
-data_path = "odin/sample_data/cars.mp4"
-
+#PyCharm
+conf_path = "ansuz/odin/config/config.json"
+data_path = "ansuz/odin/sample_data/cars.mp4"
 
 class Odin():
 
@@ -47,7 +50,7 @@ class Odin():
         self.velocidade = velocidade
 
     def get_velocidade(self):
-        return  self.velocidade
+        return self.velocidade
 
     def upload_file(tempFile, client, imageID):
         # upload the image to Dropbox and cleanup the tempory image
@@ -398,8 +401,6 @@ class Odin():
                             " is: {:.2f} KMPH".format(to.speedKMPH))
                         #str = ("{:.2f}".format(to.speedKMPH))
                         self.set_velocidade(int(to.speedKMPH))
-                        print(int(to.speedKMPH))
-                        print(self.velocidade)
 
                 # store the trackable object in our dictionary
                 trackableObjects[objectID] = to
