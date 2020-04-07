@@ -37,8 +37,8 @@ import json
 #data_path = "ansuz/odin/sample_data/cars.mp4"
 
 #PyCharm
-conf_path = "ansuz/odin/config/config.json"
-data_path = "ansuz/odin/sample_data/cars.mp4"
+conf_path = "odin/config/config.json"
+data_path = "odin/sample_data/cars.mp4"
 
 class Odin():
 
