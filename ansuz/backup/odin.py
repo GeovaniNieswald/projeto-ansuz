@@ -1,24 +1,36 @@
+# Requires:
+# pip3 install opencv-python==3.4.9.31 +
+# pip3 install dlib
+# pip3 install dropbox
+# pip3 install imutils
+# pip3 install json_minify
+#
+# python speed_estimation_dl_video.py --conf config/config.json --input sample_data/cars.mp4
+
+# inform the user about framerates and speeds
+#print("[INFO] NOTE: When using an input video file, speeds will be " \
+#	"inaccurate because OpenCV can't throttle FPS according to the " \
+#	"framerate of the video. This script is for development purposes only.")
+
+# import the necessary packages
 from hugin.hugin import *
-
-from pyimagesearch.centroidtracker import CentroidTracker
-from pyimagesearch.trackableobject import TrackableObject
-from pyimagesearch.utils import Conf
-
+from odin.pyimagesearch.centroidtracker import CentroidTracker
+from odin.pyimagesearch.trackableobject import TrackableObject
+from odin.pyimagesearch.utils import Conf
 from imutils.video import VideoStream
-from imutils.video import FPS
 from imutils.io import TempFile
-
+from imutils.video import FPS
 from datetime import datetime
-
-import argparse
-import cv2
-import dlib
-import imutils
-import json
+from threading import Thread
 import numpy as np
-import os
+import argparse
+import dropbox
+import imutils
+import dlib
 import time as tm
-import threading
+import cv2
+import os
+import json
 
 #VSCode
 #conf_path = "ansuz/odin/config/config_vscode.json"
@@ -30,83 +42,83 @@ data_path = "odin/sample_data/cars.mp4"
 
 class Odin():
 
-    def __init__(self, master):
-        self.master = master
-        self.running = 1
+    def __init__(self):
+        self.velocidade = 0
 
-        self.queue = queue.Queue()
-        self.hugin = Hugin(master, self.queue, 50)
+    def set_velocidade(self, velocidade):
+        self.velocidade = velocidade
 
-        self.tempo_ultima_velocidade = 0
-    
-        self.thread1 = threading.Thread(target=self.worker_thread1)
-        self.thread1.start()
+    def get_velocidade(self):
+        return self.velocidade
 
-        self.thread2 = threading.Thread(target=self.worker_thread2)
-        self.thread2.start()
-
-        self.periodic_call()
-
-    def periodic_call(self):
-        self.hugin.process_incoming()
-
-        if not self.running:
-            import sys
-            sys.exit(1)
-
-        self.master.after(200, self.periodic_call)
-
-    def worker_thread1(self):
-        self.tracker_speed()
-
-    def worker_thread2(self):
-        while self.running:
-            if self.tempo_ultima_velocidade >= 10:
-                self.queue.put(-99)
-                self.tempo_ultima_velocidade = 0
-            else:
-                self.tempo_ultima_velocidade += 1
-                tm.sleep(1)
-
-    def end_application(self):
-        self.running = 0
+    def upload_file(tempFile, client, imageID):
+        # upload the image to Dropbox and cleanup the tempory image
+        print("[INFO] uploading {}...".format(imageID))
+        path = "/{}.jpg".format(imageID)
+        client.files_upload(open(tempFile.path, "rb").read(), path)
+        tempFile.cleanup()
 
     def tracker_speed(self):
-        conf = json.loads(open(conf_path).read())
+        # construct the argument parser and parse the arguments
+        #ap = argparse.ArgumentParser()
+        #ap.add_argument("-c", "--conf", required=True,
+        #	help="Path to the input configuration file")
+        #ap.add_argument("-i", "--input", required=True,
+        #	help="Path to the input video file")
+        #args = vars(ap.parse_args())
 
-        # initialize the list of class labels MobileNet SSD was trained to detect
+        # load the configuration file
+        #conf = Conf(args["conf"])
+        conteudo = open(conf_path).read()
+
+        conf = json.loads(conteudo)
+
+        # initialize the list of class labels MobileNet SSD was trained to
+        # detect
         CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
             "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
             "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
             "sofa", "train", "tvmonitor"]
 
+        # check to see if the Dropbox should be used
+        if conf["use_dropbox"]:
+            # connect to dropbox and start the session authorization process
+            client = dropbox.Dropbox(conf["dropbox_access_token"])
+            print("[SUCCESS] dropbox account linked")
+
         # load our serialized model from disk
-        print("[INFO] carregando modelo...")
-        net = cv2.dnn.readNetFromCaffe(conf["prototxt_path"], conf["model_path"])
+        print("[INFO] loading model...")
+        net = cv2.dnn.readNetFromCaffe(conf["prototxt_path"],
+            conf["model_path"])
+        #net.setPreferableTarget(cv2.dnn.DNN_TARGET_MYRIAD)
 
-        #print("[INFO] iniciando câmera...")
+        # initialize the video stream and allow the camera sensor to warmup
+        print("[INFO] warming up camera...")
         #vs = VideoStream(src=0).start()
-
-        print("[INFO] iniciando vídeo...")
         vs = cv2.VideoCapture(data_path)
-
         tm.sleep(2.0)
 
-        # initialize the frame dimensions (we'll set them as soon as we read the first frame from the video)
+        # initialize the frame dimensions (we'll set them as soon as we read
+        # the first frame from the video)
         H = None
         W = None
 
         # instantiate our centroid tracker, then initialize a list to store
         # each of our dlib correlation trackers, followed by a dictionary to
         # map each unique object ID to a TrackableObject
-        ct = CentroidTracker(maxDisappeared=conf["max_disappear"], maxDistance=conf["max_distance"])
+        ct = CentroidTracker(maxDisappeared=conf["max_disappear"],
+            maxDistance=conf["max_distance"])
         trackers = []
-        trackable_objects = {}
+        trackableObjects = {}
 
         # keep the count of total number of frames
-        total_frames = 0
+        totalFrames = 0
 
-        # initialize the list of various points used to calculate the avg of the vehicle speed
+        # initialize the log file
+        logFile = None
+
+        # initialize the list of various points used to calculate the avg of
+        # the vehicle speed
         points = [("A", "B"), ("B", "C"), ("C", "D")]
 
         # start the frames per second throughput estimator
@@ -114,13 +126,34 @@ class Odin():
 
         # loop over the frames of the stream
         while True:
-            # grab the next frame from the stream, store the current timestamp, and store the new date
-            ret, frame = vs.read()
+            # grab the next frame from the stream, store the current
+            # timestamp, and store the new date
+            ret, frame  = vs.read()
             ts = datetime.now()
+            newDate = ts.strftime("%m-%d-%y")
 
             # check if the frame is None, if so, break out of the loop
             if frame is None:
                 break
+
+            # if the log file has not been created or opened
+            if logFile is None:
+                # build the log file path and create/open the log file
+                logPath = os.path.join(conf["output_path"], conf["csv_name"])
+                logFile = open(logPath, mode="a")
+
+                # set the file pointer to end of the file
+                pos = logFile.seek(0, os.SEEK_END)
+
+                # if we are using dropbox and this is a empty log file then
+                # write the column headings
+                if conf["use_dropbox"] and pos == 0:
+                    logFile.write("Year,Month,Day,Time,Speed (in KMPH),ImageID\n")
+
+                # otherwise, we are not using dropbox and this is a empty log
+                # file then write the column headings
+                elif pos == 0:
+                    logFile.write("Year,Month,Day,Time (in KMPH),Speed\n")
 
             # resize the frame
             frame = imutils.resize(frame, width=conf["frame_width"])
@@ -129,7 +162,7 @@ class Odin():
             # if the frame dimensions are empty, set them
             if W is None or H is None:
                 (H, W) = frame.shape[:2]
-                meter_per_pixel = conf["distance"] / W
+                meterPerPixel = conf["distance"] / W
 
             # initialize our list of bounding box rectangles returned by
             # either (1) our object detector or (2) the correlation trackers
@@ -137,25 +170,29 @@ class Odin():
 
             # check to see if we should run a more computationally expensive
             # object detection method to aid our tracker
-            if total_frames % conf["track_object"] == 0:
+            if totalFrames % conf["track_object"] == 0:
                 # initialize our new set of object trackers
                 trackers = []
 
                 # convert the frame to a blob and pass the blob through the
                 # network and obtain the detections
-                blob = cv2.dnn.blobFromImage(frame, size=(300, 300), ddepth=cv2.CV_8U)
-                net.setInput(blob, scalefactor=1.0/127.5, mean=[127.5, 127.5, 127.5])
+                blob = cv2.dnn.blobFromImage(frame, size=(300, 300),
+                    ddepth=cv2.CV_8U)
+                net.setInput(blob, scalefactor=1.0/127.5, mean=[127.5,
+                    127.5, 127.5])
                 detections = net.forward()
 
                 # loop over the detections
                 for i in np.arange(0, detections.shape[2]):
-                    # extract the confidence (i.e., probability) associated with the prediction
+                    # extract the confidence (i.e., probability) associated
+                    # with the prediction
                     confidence = detections[0, 0, i, 2]
 
                     # filter out weak detections by ensuring the `confidence`
                     # is greater than the minimum confidence
                     if confidence > conf["confidence"]:
-                        # extract the index of the class label from the detections list
+                        # extract the index of the class label from the
+                        # detections list
                         idx = int(detections[0, 0, i, 1])
 
                         # if the class label is not a car, ignore it
@@ -166,15 +203,16 @@ class Odin():
                         #if CLASSES[idx] != "motorbike":
                         #	continue
 
-                        # compute the (x, y)-coordinates of the bounding box for the object
+                        # compute the (x, y)-coordinates of the bounding box
+                        # for the object
                         box = detections[0, 0, i, 3:7] * np.array([W, H, W, H])
-                        (start_x, start_y, end_x, end_y) = box.astype("int")
+                        (startX, startY, endX, endY) = box.astype("int")
 
                         # construct a dlib rectangle object from the bounding
                         # box coordinates and then start the dlib correlation
                         # tracker
                         tracker = dlib.correlation_tracker()
-                        rect = dlib.rectangle(start_x, start_y, end_x, end_y)
+                        rect = dlib.rectangle(startX, startY, endX, endY)
                         tracker.start_track(rgb, rect)
 
                         # add the tracker to our list of trackers so we can
@@ -182,7 +220,8 @@ class Odin():
                         trackers.append(tracker)
 
             # otherwise, we should utilize our object *trackers* rather than
-            # object *detectors* to obtain a higher frame processing throughput
+            # object *detectors* to obtain a higher frame processing
+            # throughput
             else:
                 # loop over the trackers
                 for tracker in trackers:
@@ -191,39 +230,43 @@ class Odin():
                     pos = tracker.get_position()
 
                     # unpack the position object
-                    start_x = int(pos.left())
-                    start_y = int(pos.top())
-                    end_x = int(pos.right())
-                    end_y = int(pos.bottom())
+                    startX = int(pos.left())
+                    startY = int(pos.top())
+                    endX = int(pos.right())
+                    endY = int(pos.bottom())
 
                     # add the bounding box coordinates to the rectangles list
-                    rects.append((start_x, start_y, end_x, end_y))
+                    rects.append((startX, startY, endX, endY))
 
             # use the centroid tracker to associate the (1) old object
             # centroids with (2) the newly computed object centroids
             objects = ct.update(rects)
 
             # loop over the tracked objects
-            for (object_id, centroid) in objects.items():
-                # check to see if a trackable object exists for the current object ID
-                to = trackable_objects.get(object_id, None)
+            for (objectID, centroid) in objects.items():
+                # check to see if a trackable object exists for the current
+                # object ID
+                to = trackableObjects.get(objectID, None)
 
                 # if there is no existing trackable object, create one
                 if to is None:
-                    to = TrackableObject(object_id, centroid)
+                    to = TrackableObject(objectID, centroid)
 
                 # otherwise, if there is a trackable object and its speed has
                 # not yet been estimated then estimate it
                 elif not to.estimated:
-                    # check if the direction of the object has been set, if not, calculate it, and set it
+                    # check if the direction of the object has been set, if
+                    # not, calculate it, and set it
                     if to.direction is None:
                         y = [c[0] for c in to.centroids]
                         direction = centroid[0] - np.mean(y)
                         to.direction = direction
 
-                    # if the direction is positive (indicating the object is moving from left to right)
+                    # if the direction is positive (indicating the object
+                    # is moving from left to right)
                     if to.direction > 0:
-                        # check to see if timestamp has been noted for point A
+                        # check to see if timestamp has been noted for
+                        # point A
                         if to.timestamp["A"] == 0 :
                             # if the centroid's x-coordinate is greater than
                             # the corresponding point then set the timestamp
@@ -233,7 +276,8 @@ class Odin():
                                 to.timestamp["A"] = ts
                                 to.position["A"] = centroid[0]
 
-                        # check to see if timestamp has been noted for point B
+                        # check to see if timestamp has been noted for
+                        # point B
                         elif to.timestamp["B"] == 0:
                             # if the centroid's x-coordinate is greater than
                             # the corresponding point then set the timestamp
@@ -243,7 +287,8 @@ class Odin():
                                 to.timestamp["B"] = ts
                                 to.position["B"] = centroid[0]
 
-                        # check to see if timestamp has been noted for point C
+                        # check to see if timestamp has been noted for
+                        # point C
                         elif to.timestamp["C"] == 0:
                             # if the centroid's x-coordinate is greater than
                             # the corresponding point then set the timestamp
@@ -253,7 +298,8 @@ class Odin():
                                 to.timestamp["C"] = ts
                                 to.position["C"] = centroid[0]
 
-                        # check to see if timestamp has been noted for point D
+                        # check to see if timestamp has been noted for
+                        # point D
                         elif to.timestamp["D"] == 0:
                             # if the centroid's x-coordinate is greater than
                             # the corresponding point then set the timestamp
@@ -268,7 +314,8 @@ class Odin():
                     # if the direction is negative (indicating the object
                     # is moving from right to left)
                     elif to.direction < 0:
-                        # check to see if timestamp has been noted for point D
+                        # check to see if timestamp has been noted for
+                        # point D
                         if to.timestamp["D"] == 0 :
                             # if the centroid's x-coordinate is lesser than
                             # the corresponding point then set the timestamp
@@ -278,7 +325,8 @@ class Odin():
                                 to.timestamp["D"] = ts
                                 to.position["D"] = centroid[0]
 
-                        # check to see if timestamp has been noted for point C
+                        # check to see if timestamp has been noted for
+                        # point C
                         elif to.timestamp["C"] == 0:
                             # if the centroid's x-coordinate is lesser than
                             # the corresponding point then set the timestamp
@@ -288,7 +336,8 @@ class Odin():
                                 to.timestamp["C"] = ts
                                 to.position["C"] = centroid[0]
 
-                        # check to see if timestamp has been noted for point B
+                        # check to see if timestamp has been noted for
+                        # point B
                         elif to.timestamp["B"] == 0:
                             # if the centroid's x-coordinate is lesser than
                             # the corresponding point then set the timestamp
@@ -298,7 +347,8 @@ class Odin():
                                 to.timestamp["B"] = ts
                                 to.position["B"] = centroid[0]
 
-                        # check to see if timestamp has been noted for point A
+                        # check to see if timestamp has been noted for
+                        # point A
                         elif to.timestamp["A"] == 0:
                             # if the centroid's x-coordinate is lesser than
                             # the corresponding point then set the timestamp
@@ -316,46 +366,92 @@ class Odin():
                     # over the limit
                     if to.lastPoint and not to.estimated:
                         # initialize the list of estimated speeds
-                        estimated_speeds = []
+                        estimatedSpeeds = []
 
-                        # loop over all the pairs of points and estimate the vehicle speed
+                        # loop over all the pairs of points and estimate the
+                        # vehicle speed
                         for (i, j) in points:
                             # calculate the distance in pixels
                             d = to.position[j] - to.position[i]
-                            distance_in_pixels = abs(d)
+                            distanceInPixels = abs(d)
 
-                            # check if the distance in pixels is zero, if so, skip this iteration
-                            if distance_in_pixels == 0:
+                            # check if the distance in pixels is zero, if so,
+                            # skip this iteration
+                            if distanceInPixels == 0:
                                 continue
 
                             # calculate the time in hours
                             t = to.timestamp[j] - to.timestamp[i]
-                            time_in_seconds = abs(t.total_seconds())
-                            time_in_hours = time_in_seconds / (60 * 60)
+                            timeInSeconds = abs(t.total_seconds())
+                            timeInHours = timeInSeconds / (60 * 60)
 
-                            # calculate distance in kilometers and append the calculated speed to the list
-                            distance_in_meters = distance_in_pixels * meter_per_pixel
-                            distance_in_km = distance_in_meters / 1000
-                            estimated_speeds.append(distance_in_km / time_in_hours)
+                            # calculate distance in kilometers and append the
+                            # calculated speed to the list
+                            distanceInMeters = distanceInPixels * meterPerPixel
+                            distanceInKM = distanceInMeters / 1000
+                            estimatedSpeeds.append(distanceInKM / timeInHours)
 
                         # calculate the average speed
-                        to.calculate_speed(estimated_speeds)
+                        to.calculate_speed(estimatedSpeeds)
 
                         # set the object as estimated
                         to.estimated = True
-                        
-                        print("[INFO] Velocidade do veiculo que passou é: {:.2f} km/h".format(to.speedKMPH))
-
-                        self.queue.put(int(to.speedKMPH))
-                        self.tempo_ultima_velocidade = 0
+                        print("[INFO] Speed of the vehicle that just passed"\
+                            " is: {:.2f} KMPH".format(to.speedKMPH))
+                        #str = ("{:.2f}".format(to.speedKMPH))
+                        self.set_velocidade(int(to.speedKMPH))
 
                 # store the trackable object in our dictionary
-                trackable_objects[object_id] = to
+                trackableObjects[objectID] = to
 
-                # draw both the ID of the object and the centroid of the object on the output frame
-                text = "ID {}".format(object_id)
-                cv2.putText(frame, text, (centroid[0] - 10, centroid[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                cv2.circle(frame, (centroid[0], centroid[1]), 4, (0, 255, 0), -1)
+                # draw both the ID of the object and the centroid of the
+                # object on the output frame
+                text = "ID {}".format(objectID)
+                cv2.putText(frame, text, (centroid[0] - 10, centroid[1] - 10)
+                    , cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv2.circle(frame, (centroid[0], centroid[1]), 4,
+                    (0, 255, 0), -1)
+
+                # check if the object has not been logged
+                if not to.logged:
+                    # check if the object's speed has been estimated and it
+                    # is higher than the speed limit
+                    if to.estimated and to.speedKMPH > conf["speed_limit"]:
+                        # set the current year, month, day, and time
+                        year = ts.strftime("%Y")
+                        month = ts.strftime("%m")
+                        day = ts.strftime("%d")
+                        time = ts.strftime("%H:%M:%S")
+
+                        # check if dropbox is to be used to store the vehicle
+                        # image
+                        if conf["use_dropbox"]:
+                            # initialize the image id, and the temporary file
+                            imageID = ts.strftime("%H%M%S%f")
+                            tempFile = TempFile()
+                            cv2.imwrite(tempFile.path, frame)
+
+                            # create a thread to upload the file to dropbox
+                            # and start it
+                            t = Thread(target=upload_file, args=(tempFile,
+                                client, imageID,))
+                            t.start()
+
+                            # log the event in the log file
+                            info = "{},{},{},{},{},{}\n".format(year, month,
+                                day, time, to.speedKMPH, imageID)
+                            logFile.write(info)
+
+                        # otherwise, we are not uploading vehicle images to
+                        # dropbox
+                        else:
+                            # log the event in the log file
+                            info = "{},{},{},{},{}\n".format(year, month,
+                                day, time, to.speedKMPH)
+                            logFile.write(info)
+
+                        # set the object has logged
+                        to.logged = True
 
             # if the *display* flag is set, then display the current frame
             # to the screen and record if a user presses a key
@@ -367,21 +463,23 @@ class Odin():
                 if key == ord("q"):
                     break
 
-            # increment the total number of frames processed thus far and then update the FPS counter
-            total_frames += 1
+            # increment the total number of frames processed thus far and
+            # then update the FPS counter
+            totalFrames += 1
             fps.update()
 
+        # stop the timer and display FPS information
         fps.stop()
+        print("[INFO] elapsed time: {:.2f}".format(fps.elapsed()))
+        print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
 
-        print("[INFO] tempo decorrido: {:.2f}".format(fps.elapsed()))
-        print("[INFO] FPS aproximado: {:.2f}".format(fps.fps()))
+        # check if the log file object exists, if it does, then close it
+        if logFile is not None:
+            logFile.close()
 
-        print("[INFO] limpando...")
-
+        # close any open windows
         cv2.destroyAllWindows()
-        vs.release()
-        self.end_application()
 
-root = tk.Tk()
-odin = Odin(root)
-root.mainloop()
+        # clean up
+        print("[INFO] cleaning up...")
+        vs.release()
