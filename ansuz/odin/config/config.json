@@ -10,13 +10,10 @@
         "C": 200,
         "D": 240
     },
-    "distance": 16,
-    "speed_limit": 17,
+    "distance": 14.94,
+    "speed_limit": 50,
     "display": true,
-    "model_path": "odin/config/MobileNetSSD_deploy.caffemodel",
-    "prototxt_path": "odin/config/MobileNetSSD_deploy.prototxt",
-    "use_dropbox": false,
-    "dropbox_access_token": "YOUR_DROPBOX_APP_ACCESS_TOKEN",
-    "output_path": "odin/output",
-    "csv_name": "log.csv"
+    "camera": true,
+    "model_path": "ansuz/odin/config/MobileNetSSD_deploy.caffemodel",
+    "prototxt_path": "ansuz/odin/config/MobileNetSSD_deploy.prototxt"
 }

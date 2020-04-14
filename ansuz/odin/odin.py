@@ -20,60 +20,41 @@ import os
 import time as tm
 import threading
 
-#VSCode
-#conf_path = "ansuz/odin/config/config_vscode.json"
-#data_path = "ansuz/odin/sample_data/cars.mp4"
-
-#PyCharm
-conf_path = "odin/config/config.json"
-data_path = "odin/sample_data/cars.mp4"
+conf_path = "ansuz/odin/config/config.json"
+data_path = "ansuz/odin/sample_data/cars.mp4"
 
 class Odin():
 
     def __init__(self, master):
         self.master = master
+        self.conf = json.loads(open(conf_path).read())
         self.running = 1
 
         self.queue = queue.Queue()
-        self.hugin = Hugin(master, self.queue, 50)
+        self.hugin = Hugin(master, self.queue, self.conf["speed_limit"])
 
         self.tempo_ultima_velocidade = 0
     
-        self.thread1 = threading.Thread(target=self.worker_thread1)
+        self.thread1 = threading.Thread(target=self.tracker_speed)
         self.thread1.start()
-
-        self.thread2 = threading.Thread(target=self.worker_thread2)
-        self.thread2.start()
 
         self.periodic_call()
 
     def periodic_call(self):
-        self.hugin.process_incoming()
-
         if not self.running:
             import sys
             sys.exit(1)
 
-        self.master.after(200, self.periodic_call)
+        if self.tempo_ultima_velocidade >= 10:
+            self.queue.put(-99)
+            self.hugin.process_incoming()
+            self.tempo_ultima_velocidade = 0
+        else:
+            self.tempo_ultima_velocidade += 1
 
-    def worker_thread1(self):
-        self.tracker_speed()
-
-    def worker_thread2(self):
-        while self.running:
-            if self.tempo_ultima_velocidade >= 10:
-                self.queue.put(-99)
-                self.tempo_ultima_velocidade = 0
-            else:
-                self.tempo_ultima_velocidade += 1
-                tm.sleep(1)
-
-    def end_application(self):
-        self.running = 0
+        self.master.after(1000, self.periodic_call)
 
     def tracker_speed(self):
-        conf = json.loads(open(conf_path).read())
-
         # initialize the list of class labels MobileNet SSD was trained to detect
         CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
             "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
@@ -82,13 +63,14 @@ class Odin():
 
         # load our serialized model from disk
         print("[INFO] carregando modelo...")
-        net = cv2.dnn.readNetFromCaffe(conf["prototxt_path"], conf["model_path"])
+        net = cv2.dnn.readNetFromCaffe(self.conf["prototxt_path"], self.conf["model_path"])
 
-        #print("[INFO] iniciando câmera...")
-        #vs = VideoStream(src=0).start()
-
-        print("[INFO] iniciando vídeo...")
-        vs = cv2.VideoCapture(data_path)
+        if self.conf["camera"]:
+            print("[INFO] iniciando câmera...")
+            vs = VideoStream(src=0).start()
+        else:
+            print("[INFO] iniciando vídeo...")
+            vs = cv2.VideoCapture(data_path)
 
         tm.sleep(2.0)
 
@@ -99,7 +81,7 @@ class Odin():
         # instantiate our centroid tracker, then initialize a list to store
         # each of our dlib correlation trackers, followed by a dictionary to
         # map each unique object ID to a TrackableObject
-        ct = CentroidTracker(maxDisappeared=conf["max_disappear"], maxDistance=conf["max_distance"])
+        ct = CentroidTracker(maxDisappeared=self.conf["max_disappear"], maxDistance=self.conf["max_distance"])
         trackers = []
         trackable_objects = {}
 
@@ -115,7 +97,11 @@ class Odin():
         # loop over the frames of the stream
         while True:
             # grab the next frame from the stream, store the current timestamp, and store the new date
-            ret, frame = vs.read()
+            if self.conf["camera"]:
+                frame = vs.read()
+            else:
+                ret, frame = vs.read()
+            
             ts = datetime.now()
 
             # check if the frame is None, if so, break out of the loop
@@ -123,13 +109,13 @@ class Odin():
                 break
 
             # resize the frame
-            frame = imutils.resize(frame, width=conf["frame_width"])
+            frame = imutils.resize(frame, width=self.conf["frame_width"])
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # if the frame dimensions are empty, set them
             if W is None or H is None:
                 (H, W) = frame.shape[:2]
-                meter_per_pixel = conf["distance"] / W
+                meter_per_pixel = self.conf["distance"] / W
 
             # initialize our list of bounding box rectangles returned by
             # either (1) our object detector or (2) the correlation trackers
@@ -137,7 +123,7 @@ class Odin():
 
             # check to see if we should run a more computationally expensive
             # object detection method to aid our tracker
-            if total_frames % conf["track_object"] == 0:
+            if total_frames % self.conf["track_object"] == 0:
                 # initialize our new set of object trackers
                 trackers = []
 
@@ -154,7 +140,7 @@ class Odin():
 
                     # filter out weak detections by ensuring the `confidence`
                     # is greater than the minimum confidence
-                    if confidence > conf["confidence"]:
+                    if confidence > self.conf["confidence"]:
                         # extract the index of the class label from the detections list
                         idx = int(detections[0, 0, i, 1])
 
@@ -229,7 +215,7 @@ class Odin():
                             # the corresponding point then set the timestamp
                             # as current timestamp and set the position as the
                             # centroid's x-coordinate
-                            if centroid[0] > conf["speed_estimation_zone"]["A"]:
+                            if centroid[0] > self.conf["speed_estimation_zone"]["A"]:
                                 to.timestamp["A"] = ts
                                 to.position["A"] = centroid[0]
 
@@ -239,7 +225,7 @@ class Odin():
                             # the corresponding point then set the timestamp
                             # as current timestamp and set the position as the
                             # centroid's x-coordinate
-                            if centroid[0] > conf["speed_estimation_zone"]["B"]:
+                            if centroid[0] > self.conf["speed_estimation_zone"]["B"]:
                                 to.timestamp["B"] = ts
                                 to.position["B"] = centroid[0]
 
@@ -249,7 +235,7 @@ class Odin():
                             # the corresponding point then set the timestamp
                             # as current timestamp and set the position as the
                             # centroid's x-coordinate
-                            if centroid[0] > conf["speed_estimation_zone"]["C"]:
+                            if centroid[0] > self.conf["speed_estimation_zone"]["C"]:
                                 to.timestamp["C"] = ts
                                 to.position["C"] = centroid[0]
 
@@ -260,11 +246,12 @@ class Odin():
                             # as current timestamp, set the position as the
                             # centroid's x-coordinate, and set the last point
                             # flag as True
-                            if centroid[0] > conf["speed_estimation_zone"]["D"]:
+                            if centroid[0] > self.conf["speed_estimation_zone"]["D"]:
                                 to.timestamp["D"] = ts
                                 to.position["D"] = centroid[0]
                                 to.lastPoint = True
 
+                    """
                     # if the direction is negative (indicating the object
                     # is moving from right to left)
                     elif to.direction < 0:
@@ -274,7 +261,7 @@ class Odin():
                             # the corresponding point then set the timestamp
                             # as current timestamp and set the position as the
                             # centroid's x-coordinate
-                            if centroid[0] < conf["speed_estimation_zone"]["D"]:
+                            if centroid[0] < self.conf["speed_estimation_zone"]["D"]:
                                 to.timestamp["D"] = ts
                                 to.position["D"] = centroid[0]
 
@@ -284,7 +271,7 @@ class Odin():
                             # the corresponding point then set the timestamp
                             # as current timestamp and set the position as the
                             # centroid's x-coordinate
-                            if centroid[0] < conf["speed_estimation_zone"]["C"]:
+                            if centroid[0] < self.conf["speed_estimation_zone"]["C"]:
                                 to.timestamp["C"] = ts
                                 to.position["C"] = centroid[0]
 
@@ -294,7 +281,7 @@ class Odin():
                             # the corresponding point then set the timestamp
                             # as current timestamp and set the position as the
                             # centroid's x-coordinate
-                            if centroid[0] < conf["speed_estimation_zone"]["B"]:
+                            if centroid[0] < self.conf["speed_estimation_zone"]["B"]:
                                 to.timestamp["B"] = ts
                                 to.position["B"] = centroid[0]
 
@@ -305,10 +292,11 @@ class Odin():
                             # as current timestamp, set the position as the
                             # centroid's x-coordinate, and set the last point
                             # flag as True
-                            if centroid[0] < conf["speed_estimation_zone"]["A"]:
+                            if centroid[0] < self.conf["speed_estimation_zone"]["A"]:
                                 to.timestamp["A"] = ts
                                 to.position["A"] = centroid[0]
                                 to.lastPoint = True
+                    """
 
                     # check to see if the vehicle is past the last point and
                     # the vehicle's speed has not yet been estimated, if yes,
@@ -347,6 +335,7 @@ class Odin():
                         print("[INFO] Velocidade do veiculo que passou é: {:.2f} km/h".format(to.speedKMPH))
 
                         self.queue.put(int(to.speedKMPH))
+                        self.hugin.process_incoming()
                         self.tempo_ultima_velocidade = 0
 
                 # store the trackable object in our dictionary
@@ -359,7 +348,7 @@ class Odin():
 
             # if the *display* flag is set, then display the current frame
             # to the screen and record if a user presses a key
-            if conf["display"]:
+            if self.conf["display"]:
                 cv2.imshow("frame", frame)
                 key = cv2.waitKey(1) & 0xFF
 
@@ -379,8 +368,13 @@ class Odin():
         print("[INFO] limpando...")
 
         cv2.destroyAllWindows()
-        vs.release()
-        self.end_application()
+
+        if self.conf["camera"]:
+            vs.stop()
+        else:
+            vs.release()
+        
+        self.running = 0
 
 root = tk.Tk()
 odin = Odin(root)
