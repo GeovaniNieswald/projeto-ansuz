@@ -21,7 +21,7 @@ import time as tm
 import threading
 
 conf_path = "ansuz/odin/config/config.json"
-data_path = "ansuz/odin/sample_data/cars.mp4"
+data_path = "ansuz/odin/sample_data/V_20200421_112520.mp4"
 
 class Odin():
 
@@ -146,11 +146,8 @@ class Odin():
 
                         # if the class label is not a car, ignore it
                         if CLASSES[idx] != "car":
-                            continue
-
-                        # if the class label is not a motorbike, ignore it
-                        #if CLASSES[idx] != "motorbike":
-                        #	continue
+                            if CLASSES[idx] != "motorbike":
+                                continue
 
                         # compute the (x, y)-coordinates of the bounding box for the object
                         box = detections[0, 0, i, 3:7] * np.array([W, H, W, H])

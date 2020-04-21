@@ -10,10 +10,10 @@
         "C": 200,
         "D": 240
     },
-    "distance": 14.94,
+    "distance": 8.60,
     "speed_limit": 50,
     "display": true,
-    "camera": true,
+    "camera": false,
     "model_path": "ansuz/odin/config/MobileNetSSD_deploy.caffemodel",
     "prototxt_path": "ansuz/odin/config/MobileNetSSD_deploy.prototxt"
 }
