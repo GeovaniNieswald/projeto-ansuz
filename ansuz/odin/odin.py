@@ -1,4 +1,4 @@
-from hugin.hugin import *
+from hugin.hugin import Hugin
 
 from pyimagesearch.centroidtracker import CentroidTracker
 from pyimagesearch.trackableobject import TrackableObject
@@ -10,6 +10,8 @@ from imutils.io import TempFile
 
 from datetime import datetime
 
+import tkinter as tk
+import queue
 import argparse
 import cv2
 import dlib
