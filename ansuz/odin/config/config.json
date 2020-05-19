@@ -1,4 +1,5 @@
 {
+    "local": "",
     "max_disappear": 10,
     "max_distance": 175,
     "track_object": 4,

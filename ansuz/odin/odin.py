@@ -1,15 +1,3 @@
-from hugin.hugin import Hugin
-
-from pyimagesearch.centroidtracker import CentroidTracker
-from pyimagesearch.trackableobject import TrackableObject
-from pyimagesearch.utils import Conf
-
-from imutils.video import VideoStream
-from imutils.video import FPS
-from imutils.io import TempFile
-
-from datetime import datetime
-
 import tkinter as tk
 import queue
 import argparse
@@ -22,26 +10,45 @@ import os
 import time as tm
 import threading
 
+from hugin.hugin import Hugin
+from firebase.firebase import Firebase
+
+from pyimagesearch.centroidtracker import CentroidTracker
+from pyimagesearch.trackableobject import TrackableObject
+from pyimagesearch.utils import Conf
+
+from imutils.video import VideoStream
+from imutils.video import FPS
+from imutils.io import TempFile
+
+from datetime import datetime
+
 conf_path = "ansuz/odin/config/config.json"
+uuid_path = "ansuz/odin/config/uuid.json"
 data_path = "ansuz/odin/sample_data/V_20200421_112520.mp4"
 
 class Odin():
 
-    def __init__(self, master):
+    def __init__(self, master, conf):
         self.master = master
-        self.conf = json.loads(open(conf_path).read())
-        self.running = 1
 
-        self.queue = queue.Queue()
-        self.hugin = Hugin(master, self.queue, self.conf["speed_limit"])
+        self.conf = conf
 
-        self.tempo_ultima_velocidade = 0
-    
-        self.thread1 = threading.Thread(target=self.tracker_speed)
-        self.thread1.start()
+        if self.conf:
+            self.running = 1
 
+            self.queue = queue.Queue()
+            self.hugin = Hugin(master, self.queue, self.conf["speed_limit"])
+
+            self.tempo_ultima_velocidade = 0
+        
+            self.thread1 = threading.Thread(target=self.tracker_speed)
+            self.thread1.start()
+        else: 
+            self.running = 0
+            
         self.periodic_call()
-
+       
     def periodic_call(self):
         if not self.running:
             import sys
@@ -375,6 +382,39 @@ class Odin():
         
         self.running = 0
 
+conf_local = None
+uuid = None
+local = ""
+primeiro_acesso = False
+
+if os.path.exists('./{}'.format(uuid_path)): 
+    uuid = json.loads(open(uuid_path).read())["uuid"]
+else: 
+    primeiro_acesso = True
+
+    uuid_txt = input("Informe o UUID: ")
+    local_txt = input("Informe o Local do Sistema: ")
+
+    uuid_json = {
+        'uuid': uuid_txt
+    }
+
+    with open(uuid_path, 'w') as file_uuid:
+        json.dump(uuid_json, file_uuid)
+
+    uuid = uuid_txt
+    local = local_txt
+
+if uuid:
+    if primeiro_acesso:
+        conf_local = json.loads(open(conf_path).read())
+        conf_local["local"] = local
+
+        if not Firebase().gravar_conf_inicial(uuid, conf_local):
+            conf_local = None
+    else:
+        conf_local = Firebase().obter_conf(uuid)
+      
 root = tk.Tk()
-odin = Odin(root)
+odin = Odin(root, conf_local)
 root.mainloop()

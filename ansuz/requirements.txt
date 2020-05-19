@@ -9,6 +9,7 @@
 # sudo pip3 install imutils
 # sudo pip3 install json_minify
 # sudo pip3 install scipy
+# sudo pip3 install firebase-admin
 #
 # python speed_estimation_dl_video.py --conf config/config.json --input sample_data/cars.mp4
 
