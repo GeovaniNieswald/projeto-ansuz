@@ -4,7 +4,7 @@ import json
 from firebase_admin import credentials
 from firebase_admin import db
 
-firebase_sdk_path = "ansuz/odin/config/projeto-ansuz-firebase-adminsdk-9xff1-695911b4b3.json"
+firebase_sdk_path = "ansuz/odin/config/projeto-ansuz-firebase-adminsdk-9xff1-ed81f64f90.json"
     
 class Firebase():
 
